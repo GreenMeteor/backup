@@ -3,8 +3,10 @@
 namespace humhub\modules\backup\notifications;
 
 use Yii;
-use humhub\modules\notification\components\BaseNotification;
+use yii\helpers\Url;
 use humhub\modules\backup\widgets\BackupNotificationIcon;
+use humhub\modules\notification\components\BaseNotification;
+use humhub\modules\admin\notifications\AdminNotificationCategory;
 
 /**
  * BackupNotification
@@ -24,37 +26,21 @@ class BackupNotification extends BaseNotification
     public $viewName = 'backup_notification';
 
     /**
-     * @var string The title of the notification
+     * @inheritdoc
      */
-    public $title;
-
-    /**
-     * @var string The message content
-     */
-    public $message;
+    public $requireOriginator = false;
 
     /**
      * @inheritdoc
      */
-    public function html()
-    {
-        return $this->message;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function getMailSubject()
-    {
-        return $this->title;
-    }
+    public $requireSource = false;
 
     /**
      * @inheritdoc
      */
     public function getUrl()
     {
-        return ['/backup/admin/index'];
+        return Url::to(['/backup/admin/index']);
     }
 
     /**
@@ -68,25 +54,17 @@ class BackupNotification extends BaseNotification
     /**
      * @inheritdoc
      */
-    public function getTitle()
+    public function category()
     {
-        if (!empty($this->title)) {
-            return $this->title;
-        }
-
-        return Yii::t('BackupModule.base', 'Backup Notification');
+        return new AdminNotificationCategory();
     }
 
     /**
      * @inheritdoc
      */
-    public function getAsHtml()
+    public function html()
     {
-        if (!empty($this->message)) {
-            return $this->message;
-        }
-
-        return Yii::t('BackupModule.base', 'A backup operation has been completed.');
+        return Yii::t('BackupModule.notification', "Backup is  available.");
     }
 
     /**
