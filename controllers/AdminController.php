@@ -8,6 +8,8 @@ use humhub\modules\admin\components\Controller;
 use humhub\modules\admin\permissions\ManageModules;
 use humhub\modules\backup\models\ConfigureForm;
 use humhub\modules\backup\components\BackupManager;
+use humhub\modules\backup\jobs\BackupJob;
+use humhub\modules\backup\notifications\BackupNotification;
 use yii\web\Response;
 
 /**
@@ -48,24 +50,25 @@ class AdminController extends Controller
     }
 
     /**
-     * Creates a new backup
+     * Creates a new backup using the background job
      */
     public function actionCreateBackup()
     {
         $this->forcePostRequest();
 
-        $backupManager = new BackupManager();
-
         try {
-            $result = $backupManager->createBackup();
-            if ($result) {
-                $this->view->success(Yii::t('BackupModule.base', 'Backup created successfully.'));
+            $job = new BackupJob([
+                'userId' => Yii::$app->user->id,
+            ]);
+
+            if (Yii::$app->queue->push($job)) {
+                $this->view->info(Yii::t('BackupModule.base', 'Backup job has been queued and will run in the background.'));
             } else {
-                $this->view->error(Yii::t('BackupModule.base', 'Failed to create backup.'));
+                $this->view->error(Yii::t('BackupModule.base', 'Failed to queue backup job.'));
             }
         } catch (\Exception $e) {
-            $this->view->error(Yii::t('BackupModule.base', 'Error creating backup: {message}', ['message' => $e->getMessage()]));
-            Yii::error('Error creating backup: ' . $e->getMessage(), 'backup');
+            $this->view->error(Yii::t('BackupModule.base', 'Error creating backup job: {message}', ['message' => $e->getMessage()]));
+            Yii::error('Error creating backup job: ' . $e->getMessage(), 'backup');
         }
 
         return $this->redirect(['index']);
@@ -102,7 +105,7 @@ class AdminController extends Controller
         $this->forcePostRequest();
 
         $backupManager = new BackupManager();
-        
+
         if ($backupManager->deleteBackup($fileName)) {
             $this->view->success(Yii::t('BackupModule.base', 'Backup deleted successfully.'));
         } else {
@@ -131,7 +134,7 @@ class AdminController extends Controller
 
         return $this->redirect(['index']);
     }
-    
+
     /**
      * Restore a backup
      * 
@@ -144,9 +147,9 @@ class AdminController extends Controller
         $this->forcePostRequest();
 
         $backupManager = new BackupManager();
-        
+
         $result = $backupManager->restoreBackup($fileName);
-        
+
         if ($result === true) {
             $this->view->success(Yii::t('BackupModule.base', 'Backup restored successfully.'));
         } else {
@@ -154,6 +157,27 @@ class AdminController extends Controller
             $this->view->error($errorMessage);
             Yii::error('Error restoring backup: ' . $errorMessage, 'backup');
         }
+
+        return $this->redirect(['index']);
+    }
+
+    /**
+     * Handle displaying backup notification details
+     * 
+     * @param int $id The notification ID
+     * @return \yii\web\Response
+     * @throws HttpException If notification not found
+     */
+    public function actionNotification($id)
+    {
+        $notification = BackupNotification::findOne(['id' => $id]);
+
+        if ($notification === null) {
+            throw new HttpException(404, Yii::t('BackupModule.base', 'Notification not found.'));
+        }
+
+        $notification->seen = 1;
+        $notification->save();
 
         return $this->redirect(['index']);
     }
