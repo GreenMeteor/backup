@@ -99,7 +99,7 @@ class BackupJob extends LongRunningActiveJob
             $notification->module = 'backup';
             $notification->source_class = self::class;
 
-            $notification->data = [
+            $notification = [
                 'title' => $title,
                 'message' => $message
             ];
