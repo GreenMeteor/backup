@@ -1,0 +1,20 @@
+{
+    "id": "backup",
+    "version": "1.0.0",
+    "name": "Backup",
+    "description": "Create manual backups of your HumHub's database and important directories.",
+    "humhub": {
+        "minVersion": "1.17.0"
+    },
+    "keywords": ["backup"],
+    "homepage": "https://greenmeteor.net/",
+    "issues": "https://github.com/GreenMeteor/premium-modules/issues",
+    "authors": [
+        {
+            "name": "Green Meteor",
+            "email": "hello@greenmeteor.net",
+            "homepage": "https://greenmeteor.net",
+            "role": "Owner"
+        }
+    ]
+}
