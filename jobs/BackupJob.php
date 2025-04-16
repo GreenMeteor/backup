@@ -23,11 +23,6 @@ class BackupJob extends LongRunningActiveJob
     public $settings;
 
     /**
-     * @var string The user ID who initiated the backup
-     */
-    public $userId;
-
-    /**
      * @inheritDoc
      */
     public function run()
@@ -46,11 +41,6 @@ class BackupJob extends LongRunningActiveJob
                 $this->logError('Failed to create backup');
                 return false;
             }
-
-            $this->sendNotification(
-                Yii::t('BackupModule.base', 'Backup Completed'),
-                Yii::t('BackupModule.base', 'Your backup has been successfully created: {filename}', ['filename' => Html::encode($filename)])
-            );
 
             return true;
         } catch (\Exception $e) {
@@ -73,40 +63,5 @@ class BackupJob extends LongRunningActiveJob
     private function logError($message)
     {
         Yii::error($message, 'backup');
-    }
-
-    /**
-     * Send a notification to the user who initiated the backup
-     * 
-     * @param string $title The notification title
-     * @param string $message The notification message
-     */
-    private function sendNotification($title, $message)
-    {
-        if (empty($this->userId)) {
-            return;
-        }
-
-        $user = \humhub\modules\user\models\User::findOne(['id' => $this->userId]);
-        if ($user === null) {
-            return;
-        }
-
-        try {
-            $notification = new \humhub\modules\notification\models\Notification();
-            $notification->class = 'humhub\modules\backup\notifications\BackupNotification';
-            $notification->user_id = $user->id;
-            $notification->module = 'backup';
-            $notification->source_class = self::class;
-
-            $notification = [
-                'title' => $title,
-                'message' => $message
-            ];
-
-            $notification->save();
-        } catch (\Exception $e) {
-            Yii::error('Failed to send backup notification: ' . $e->getMessage(), 'backup');
-        }
     }
 }
