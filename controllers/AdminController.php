@@ -160,25 +160,4 @@ class AdminController extends Controller
 
         return $this->redirect(['index']);
     }
-
-    /**
-     * Handle displaying backup notification details
-     * 
-     * @param int $id The notification ID
-     * @return \yii\web\Response
-     * @throws HttpException If notification not found
-     */
-    public function actionNotification($id)
-    {
-        $notification = BackupNotification::findOne(['id' => $id]);
-
-        if ($notification === null) {
-            throw new HttpException(404, Yii::t('BackupModule.base', 'Notification not found.'));
-        }
-
-        $notification->seen = 1;
-        $notification->save();
-
-        return $this->redirect(['index']);
-    }
 }
