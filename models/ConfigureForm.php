@@ -94,7 +94,7 @@ class ConfigureForm extends Model
     {
         return [
             'backupDir' => Yii::t('BackupModule.base', 'Default is @runtime/backups'),
-            'backupModules' => Yii::t('BackupModule.base', 'Warning: If you have a lot of modules in <code>/protected/modules</code> then unknown issues can occur.'),
+            'backupModules' => Yii::t('BackupModule.base', 'Warning: If you have a lot of modules in <code>/protected/modules</code> then extended wait time may occur.'),
             'themeName' => Yii::t('BackupModule.base', 'Only required if you want to backup a custom theme'),
             'enableAutoBackup' => Yii::t('BackupModule.base', 'Warning: Enable at your own risk'),
             'keepBackups' => Yii::t('BackupModule.base', 'Older backups will be automatically deleted'),
