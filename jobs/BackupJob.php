@@ -46,11 +46,6 @@ class BackupJob extends LongRunningActiveJob
         } catch (\Exception $e) {
             $this->logError('Backup error: ' . $e->getMessage());
 
-            $this->sendNotification(
-                Yii::t('BackupModule.base', 'Backup Failed'),
-                Yii::t('BackupModule.base', 'An error occurred during backup creation: {error}', ['error' => Html::encode($e->getMessage())])
-            );
-
             return false;
         }
     }

@@ -37,6 +37,18 @@ class AdminController extends Controller
         $backupManager = new BackupManager();
         $backups = $backupManager->getBackupsList();
 
+        foreach ($backups as &$backup) {
+            if (!isset($backup['created_at'])) {
+                $backupFilePath = $backupManager->getBackupDirectory() . '/' . $backup['filename'];
+                if (file_exists($backupFilePath)) {
+                    $backup['created_at'] = filemtime($backupFilePath);
+                } else {
+                    $backup['created_at'] = null;
+                }
+            }
+        }
+        unset($backup);
+
         if ($model->load(Yii::$app->request->post()) && $model->validate()) {
             $model->save();
             $this->view->saved();
@@ -56,9 +68,7 @@ class AdminController extends Controller
         $this->forcePostRequest();
 
         try {
-            $job = new BackupJob([
-                'userId' => Yii::$app->user->id,
-            ]);
+            $job = new BackupJob([]);
 
             if (Yii::$app->queue->push($job)) {
                 $this->view->info(Yii::t('BackupModule.base', 'Backup job has been queued and will run in the background.'));

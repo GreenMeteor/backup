@@ -23,6 +23,8 @@ $this->title = Yii::t('BackupModule.base', 'Backup Management');
             
             <?= $form->field($model, 'backupDir')->textInput(['maxlength' => 255])->hint($model->getAttributeHint('backupDir')); ?>
 
+            <?= $form->field($model, 'backupDatabase')->checkbox(); ?>
+
             <?= $form->field($model, 'backupModules')->checkbox(); ?>
 
             <?= $form->field($model, 'backupConfig')->checkbox(); ?>
@@ -94,6 +96,8 @@ $this->title = Yii::t('BackupModule.base', 'Backup Management');
                     <?php foreach ($backups as $backup): ?>
                         <tr>
                             <td><?= Html::encode($backup['filename']); ?></td>
+                            <td><?= Html::encode($backup['size']); ?></td>
+                            <td><?= Yii::$app->formatter->asDate($backup['created_at']); ?></td>
                             <td>
                                 <?= Button::primary(Yii::t('BackupModule.base', 'Download'))
                                     ->link(Url::to(['download-backup', 'fileName' => $backup['filename']]))
