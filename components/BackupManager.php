@@ -48,7 +48,6 @@ class BackupManager
             @chmod($backupDir, 0775);
         }
 
-        // Ensure backup directory is writable
         if (!is_writable($backupDir)) {
             @chmod($backupDir, 0775);
             if (!is_writable($backupDir)) {
@@ -57,7 +56,9 @@ class BackupManager
         }
 
         $timestamp = date('Y-m-d_His');
-        $hostname = preg_replace('/[^a-zA-Z0-9]/', '_', Yii::$app->request->hostName);
+
+        $hostname = $this->getSafeHostname();
+        
         $filename = "humhub_backup_{$hostname}_{$timestamp}.zip";
         $backupPath = $backupDir . DIRECTORY_SEPARATOR . $filename;
 
@@ -75,7 +76,6 @@ class BackupManager
         $rootDir = Yii::getAlias('@webroot');
         $processed = true;
 
-        // Only process the directories that are selected in settings
         if ($this->settings->backupModules) {
             $modulesDir = $rootDir . '/protected/modules';
             if (is_dir($modulesDir)) {
@@ -118,7 +118,7 @@ class BackupManager
             'humhub_version' => Yii::$app->version,
             'backup_date' => date('Y-m-d H:i:s'),
             'backup_components' => [
-                'database' => false, // Database backup removed
+                'database' => false,
                 'modules' => $this->settings->backupModules,
                 'config' => $this->settings->backupConfig,
                 'uploads' => $this->settings->backupUploads,
@@ -129,7 +129,6 @@ class BackupManager
 
         $zip->addFromString('backup-info.json', json_encode($metadata, JSON_PRETTY_PRINT));
 
-        // Close the ZIP file and check for errors
         $closeResult = $zip->close();
         if ($closeResult !== true) {
             Yii::error("Failed to close ZIP archive", 'backup');
@@ -139,7 +138,6 @@ class BackupManager
             return false;
         }
 
-        // Verify the file was created
         if (!file_exists($backupPath)) {
             Yii::error("ZIP file was not created: $backupPath", 'backup');
             return false;
@@ -150,6 +148,45 @@ class BackupManager
         }
 
         return $filename;
+    }
+
+    /**
+     * Gets a safe hostname string for file naming that works in both web and console environments
+     * 
+     * @return string A safe hostname string
+     */
+    private function getSafeHostname()
+    {
+        if (Yii::$app instanceof \yii\console\Application) {
+            $hostname = Yii::$app->settings->get('maintenanceMode.hostname');
+
+            if (empty($hostname) && isset(Yii::$app->params['hostname'])) {
+                $hostname = Yii::$app->params['hostname'];
+            }
+
+            if (empty($hostname)) {
+                $baseUrl = Yii::$app->settings->get('baseUrl');
+                if (!empty($baseUrl)) {
+                    $parts = parse_url($baseUrl);
+                    if (isset($parts['host'])) {
+                        $hostname = $parts['host'];
+                    }
+                }
+            }
+
+            if (empty($hostname) && isset($_SERVER['SERVER_NAME'])) {
+                $hostname = $_SERVER['SERVER_NAME'];
+            }
+
+            if (empty($hostname)) {
+                $hostname = 'console';
+            }
+        } else {
+
+            $hostname = Yii::$app->request->hostName;
+        }
+
+        return preg_replace('/[^a-zA-Z0-9]/', '_', $hostname);
     }
 
     /**
@@ -187,11 +224,10 @@ class BackupManager
     {
         if (!is_dir($sourcePath)) {
             Yii::warning("Directory does not exist: $sourcePath", 'backup');
-            return true; // Not an error condition, just nothing to do
+            return true;
         }
 
         try {
-            // Create a flat array of all files first
             $allFiles = [];
             $iterator = new \RecursiveIteratorIterator(
                 new \RecursiveDirectoryIterator($sourcePath, \FilesystemIterator::SKIP_DOTS),
@@ -203,23 +239,20 @@ class BackupManager
                     $allFiles[] = $file->getRealPath();
                 }
             }
-            
-            // Process files in batches
+
             $totalFiles = count($allFiles);
             $processedFiles = 0;
-            
+
             while ($processedFiles < $totalFiles) {
                 $batch = array_slice($allFiles, $processedFiles, $this->batchSize);
                 foreach ($batch as $filePath) {
                     $relativePath = substr($filePath, strlen($sourcePath) + 1);
                     if (!$zip->addFile($filePath, $zipPath . '/' . $relativePath)) {
                         Yii::warning("Failed to add file to ZIP: $filePath", 'backup');
-                        // Continue with the next file
                     }
                 }
                 $processedFiles += count($batch);
-                
-                // Free up memory
+
                 unset($batch);
                 gc_collect_cycles();
             }
@@ -403,10 +436,9 @@ class BackupManager
         if (!file_exists($backupPath) || !is_file($backupPath)) {
             return ['Backup file not found'];
         }
-        
-        // Check if backup file is readable
+
         if (!is_readable($backupPath)) {
-            @chmod($backupPath, 0664); // Try to make it readable
+            @chmod($backupPath, 0664);
             if (!is_readable($backupPath)) {
                 return ['Backup file exists but is not readable (permission denied)'];
             }
@@ -418,8 +450,7 @@ class BackupManager
         if (!FileHelper::createDirectory($tempDir, 0775, true)) {
             return ['Could not create temporary directory for restoration'];
         }
-        
-        // Set proper permissions on temp directory
+
         @chmod($tempDir, 0775);
 
         $zip = new ZipArchive();
@@ -428,16 +459,14 @@ class BackupManager
             return ['Could not open backup archive'];
         }
 
-        // Extract with memory-efficient approach
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $zip->extractTo($tempDir, [$zip->getNameIndex($i)]);
-            
-            // Every 100 files, run garbage collection
+
             if ($i % 100 === 0) {
                 gc_collect_cycles();
             }
         }
-        
+
         $zip->close();
 
         $metadata = [];
@@ -448,7 +477,6 @@ class BackupManager
         if (isset($metadata['backup_components']['modules']) && $metadata['backup_components']['modules']) {
             if (is_dir($tempDir . '/protected/modules')) {
                 try {
-                    // Check target directory permissions
                     $targetDir = $rootDir . '/protected/modules';
                     if (!is_dir($targetDir)) {
                         if (!FileHelper::createDirectory($targetDir, 0775, true)) {
@@ -464,7 +492,7 @@ class BackupManager
                             Yii::error("Modules directory is not writable: $targetDir", 'backup');
                         }
                     }
-                    
+
                     if (empty($errors) || !in_array('Modules directory is not writable', $errors)) {
                         FileHelper::copyDirectory($tempDir . '/protected/modules', $targetDir, [
                             'dirMode' => 0775,
@@ -481,7 +509,6 @@ class BackupManager
         if (isset($metadata['backup_components']['config']) && $metadata['backup_components']['config']) {
             if (is_dir($tempDir . '/protected/config')) {
                 try {
-                    // Check target directory permissions
                     $targetDir = $rootDir . '/protected/config';
                     if (!is_dir($targetDir)) {
                         if (!FileHelper::createDirectory($targetDir, 0775, true)) {
@@ -497,7 +524,7 @@ class BackupManager
                             Yii::error("Config directory is not writable: $targetDir", 'backup');
                         }
                     }
-                    
+
                     if (empty($errors) || !in_array('Config directory is not writable', $errors)) {
                         FileHelper::copyDirectory($tempDir . '/protected/config', $targetDir, [
                             'dirMode' => 0775,
@@ -514,7 +541,6 @@ class BackupManager
         if (isset($metadata['backup_components']['uploads']) && $metadata['backup_components']['uploads']) {
             if (is_dir($tempDir . '/uploads')) {
                 try {
-                    // Check target directory permissions
                     $targetDir = $rootDir . '/uploads';
                     if (!is_dir($targetDir)) {
                         if (!FileHelper::createDirectory($targetDir, 0775, true)) {
@@ -530,14 +556,13 @@ class BackupManager
                             Yii::error("Uploads directory is not writable: $targetDir", 'backup');
                         }
                     }
-                    
+
                     if (empty($errors) || !in_array('Uploads directory is not writable', $errors)) {
                         FileHelper::copyDirectory($tempDir . '/uploads', $targetDir, [
                             'dirMode' => 0775,
                             'fileMode' => 0664
                         ]);
-                        
-                        // Uploads directory needs to be writable by the web server
+
                         $this->recursiveChmod($targetDir, 0775, 0664);
                     }
                 } catch (\Exception $e) {
@@ -552,10 +577,9 @@ class BackupManager
             $themeName = $metadata['backup_components']['theme_name'];
             if (is_dir($tempDir . '/themes/' . $themeName)) {
                 try {
-                    // Check target directory permissions
                     $themeDir = $rootDir . '/themes';
                     $targetDir = $themeDir . '/' . $themeName;
-                    
+
                     if (!is_dir($themeDir)) {
                         if (!FileHelper::createDirectory($themeDir, 0775, true)) {
                             $errors[] = 'Could not create themes directory';
@@ -570,7 +594,7 @@ class BackupManager
                             Yii::error("Themes directory is not writable: $themeDir", 'backup');
                         }
                     }
-                    
+
                     if (empty($errors) || !in_array('Themes directory is not writable', $errors)) {
                         FileHelper::copyDirectory($tempDir . '/themes/' . $themeName, $targetDir, [
                             'dirMode' => 0775,
@@ -605,8 +629,7 @@ class BackupManager
         if (!is_dir($path)) {
             return;
         }
-        
-        // Process in batches to avoid memory issues
+
         $directoryIterator = new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS);
         $iterator = new \RecursiveIteratorIterator($directoryIterator, \RecursiveIteratorIterator::SELF_FIRST);
         
@@ -617,14 +640,12 @@ class BackupManager
             } else {
                 @chmod($item->getRealPath(), $fileMode);
             }
-            
-            // Every 100 items, run garbage collection
+
             if (++$count % 100 === 0) {
                 gc_collect_cycles();
             }
         }
-        
-        // Set the permission on the root directory too
+
         @chmod($path, $dirMode);
     }
 }
