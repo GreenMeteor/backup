@@ -9,7 +9,6 @@ use humhub\modules\backup\models\ConfigureForm;
 
 /**
  * BackupManager handles the creation and management of backups
- * Optimized version with removed MySQL functionality and improved file handling
  */
 class BackupManager
 {
@@ -73,6 +72,10 @@ class BackupManager
             return false;
         }
 
+        if ($this->settings->backupDatabase) {
+            $this->backupDatabase($zip);
+        }
+
         $rootDir = Yii::getAlias('@webroot');
         $processed = true;
 
@@ -118,7 +121,7 @@ class BackupManager
             'humhub_version' => Yii::$app->version,
             'backup_date' => date('Y-m-d H:i:s'),
             'backup_components' => [
-                'database' => false,
+                'database' => $this->settings->backupDatabase,
                 'modules' => $this->settings->backupModules,
                 'config' => $this->settings->backupConfig,
                 'uploads' => $this->settings->backupUploads,
@@ -262,6 +265,256 @@ class BackupManager
             Yii::error("Error adding directory to ZIP: " . $e->getMessage(), 'backup');
             return false;
         }
+    }
+
+    /**
+     * Backup the database and add it to the zip archive
+     * 
+     * @param ZipArchive $zip
+     */
+    private function backupDatabase($zip)
+    {
+        $db = Yii::$app->db;
+        $dbConfig = $db->getSchema()->defaultSchema;
+
+        $dumpFile = $this->createMysqlDump();
+        $backupDatabase = Yii::getAlias('@runtime/backups');
+
+        if ($dumpFile) {
+            if (file_exists($dumpFile) && is_readable($dumpFile)) {
+                Yii::info("Adding database dump file to backup: $dumpFile", 'backup');
+                if (!$zip->addFile($dumpFile, $this->getBackupDirectory() . '/database/db_dump.sql')) {
+                    Yii::error("Failed to add database dump to ZIP", 'backup');
+                }
+            } else {
+                Yii::error("Database dump file not accessible: $dumpFile", 'backup');
+            }
+
+            $dbInfo = [
+                'driver' => $db->driverName,
+                'host' => $db->dsn,
+                'database' => $dbConfig,
+                'backup_method' => 'mysqldump',
+                'backup_time' => date('Y-m-d H:i:s')
+            ];
+            $zip->addFromString($this->getBackupDirectory() . 'database/db_info.json', json_encode($dbInfo, JSON_PRETTY_PRINT));
+
+            @unlink($dumpFile);
+        } else {
+            Yii::warning("MySQLDump not available or failed, falling back to schema-only backup", 'backup');
+            $schema = $db->schema;
+            $tables = $schema->getTableNames();
+            $sql = [];
+
+            foreach ($tables as $table) {
+                $tableSchema = $schema->getTableSchema($table);
+                if ($tableSchema) {
+                    $createTableSql = $this->getCreateTableSql($table);
+                    if ($createTableSql) {
+                        $sql[] = "-- Table structure for table `$table`";
+                        $sql[] = $createTableSql;
+                    }
+                }
+            }
+
+            $sql = array_merge([
+                "-- HumHub Database Backup (SCHEMA ONLY - NO DATA)",
+                "-- Generated: " . date('Y-m-d H:i:s'),
+                "-- HumHub Version: " . Yii::$app->version,
+                "-- WARNING: This is a fallback backup containing only table schemas without data.",
+                "-- It's recommended to use mysqldump for full database backups.",
+                ""
+            ], $sql);
+
+            $zip->addFromString($this->getBackupDirectory() . 'database/db_schema.sql', implode("\n\n", $sql));
+
+            $dbInfo = [
+                'driver' => $db->driverName,
+                'host' => $db->dsn,
+                'database' => $dbConfig,
+                'backup_method' => 'schema_only',
+                'note' => 'Only schema was backed up. Data needs to be migrated separately.',
+                'backup_time' => date('Y-m-d H:i:s')
+            ];
+            $zip->addFromString($this->getBackupDirectory() . 'database/db_info.json', json_encode($dbInfo, JSON_PRETTY_PRINT));
+        }
+    }
+
+    /**
+     * Try to create a MySQL dump using the mysqldump command
+     * 
+     * @return string|false Path to the dump file or false on failure
+     */
+    private function createMysqlDump()
+    {
+        try {
+            $db = Yii::$app->db;
+
+            if ($db->driverName !== 'mysql') {
+                Yii::info("Database is not MySQL, can't use mysqldump", 'backup');
+                return false;
+            }
+
+            $backupDir = $this->getBackupDirectory();
+            if (!is_dir($backupDir)) {
+                if (!FileHelper::createDirectory($backupDir, 0775, true)) {
+                    Yii::error("Could not create backup directory: $backupDir", 'backup');
+                    return false;
+                }
+                @chmod($backupDir, 0775);
+            }
+
+            if (!is_writable($backupDir)) {
+                @chmod($backupDir, 0775);
+                if (!is_writable($backupDir)) {
+                    Yii::error("Backup directory is not writable: $backupDir", 'backup');
+                    return false;
+                }
+            }
+
+            $tempFile = $backupDir . DIRECTORY_SEPARATOR . 'temp_db_dump_' . uniqid() . '.sql';
+
+            if (file_exists($tempFile)) {
+                @chmod($tempFile, 0664);
+            }
+
+            $dsn = $db->dsn;
+            $host = 'localhost';
+            $port = null;
+            $dbName = '';
+
+            if (preg_match('/host=([^;]+)/', $dsn, $hostMatches)) {
+                if (strpos($hostMatches[1], ':') !== false) {
+                    list($host, $port) = explode(':', $hostMatches[1], 2);
+                } else {
+                    $host = $hostMatches[1];
+                }
+            }
+
+            if (preg_match('/dbname=([^;]+)/', $dsn, $dbNameMatches)) {
+                $dbName = $dbNameMatches[1];
+            } else {
+                Yii::error("Could not extract database name from DSN", 'backup');
+                return false;
+            }
+
+            $user = $db->username;
+            $password = $db->password;
+
+            $command = 'which mysqldump 2>/dev/null';
+            $mysqldumpPath = exec($command, $output, $returnVar);
+
+            if ($returnVar !== 0 || empty($mysqldumpPath)) {
+                $commonPaths = [
+                    '/usr/bin/mysqldump',
+                    '/usr/local/bin/mysqldump',
+                    '/usr/local/mysql/bin/mysqldump',
+                    '/opt/local/bin/mysqldump',
+                    '/opt/local/lib/mysql/bin/mysqldump',
+                    'C:\\xampp\\mysql\\bin\\mysqldump.exe',
+                    'C:\\wamp\\bin\\mysql\\mysql5.7.26\\bin\\mysqldump.exe'
+                ];
+
+                foreach ($commonPaths as $path) {
+                    if (file_exists($path)) {
+                        $mysqldumpPath = $path;
+                        break;
+                    }
+                }
+
+                if (empty($mysqldumpPath)) {
+                    Yii::error("mysqldump command not found", 'backup');
+                    return false;
+                }
+            }
+
+            Yii::warning("Using mysqldump at: $mysqldumpPath", 'backup');
+
+            $configFile = $backupDir . DIRECTORY_SEPARATOR . 'temp_my_' . uniqid() . '.cnf';
+            $configContent = "[client]\n";
+            $configContent .= "host = \"$host\"\n";
+            if ($port) {
+                $configContent .= "port = \"$port\"\n";
+            }
+            $configContent .= "user = \"$user\"\n";
+            if (!empty($password)) {
+                $configContent .= "password = \"" . str_replace('"', '\\"', $password) . "\"\n";
+            }
+
+            if (file_put_contents($configFile, $configContent) === false) {
+                Yii::error("Could not create temporary MySQL config file", 'backup');
+                return false;
+            }
+            chmod($configFile, 0600);
+
+            $command = escapeshellarg($mysqldumpPath) . " --defaults-file=" . escapeshellarg($configFile) . " ";
+            $command .= "--opt --single-transaction --skip-lock-tables --routines --triggers --events ";
+            $command .= escapeshellarg($dbName) . " > " . escapeshellarg($tempFile) . " 2>/dev/null";
+
+            Yii::info("Executing mysqldump command", 'backup');
+            exec($command, $output, $returnVar);
+
+            @unlink($configFile);
+
+            if ($returnVar !== 0 || !file_exists($tempFile) || filesize($tempFile) === 0) {
+                Yii::error("mysqldump command failed with code: $returnVar", 'backup');
+                @unlink($tempFile);
+
+                $command = escapeshellarg($mysqldumpPath) . " --opt --single-transaction --skip-lock-tables ";
+                $command .= "--routines --triggers --events ";
+                $command .= "-h " . escapeshellarg($host) . " ";
+                if ($port) {
+                    $command .= "-P " . escapeshellarg($port) . " ";
+                }
+                $command .= "-u " . escapeshellarg($user) . " ";
+
+                if (!empty($password)) {
+                    $command = "MYSQL_PWD=" . escapeshellarg($password) . " " . $command;
+                }
+
+                $command .= escapeshellarg($dbName) . " > " . escapeshellarg($tempFile) . " 2>/dev/null";
+
+                exec($command, $output, $returnVar);
+
+                if ($returnVar !== 0 || !file_exists($tempFile) || filesize($tempFile) === 0) {
+                    Yii::error("Second attempt at mysqldump also failed with code: $returnVar", 'backup');
+                    @unlink($tempFile);
+                    return false;
+                }
+            }
+
+            return $tempFile;
+
+        } catch (\Exception $e) {
+            Yii::error("Error in createMysqlDump: " . $e->getMessage(), 'backup');
+            if (isset($tempFile) && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+            if (isset($configFile) && file_exists($configFile)) {
+                @unlink($configFile);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Get CREATE TABLE SQL for a table
+     * 
+     * @param string $tableName
+     * @return string|false
+     */
+    private function getCreateTableSql($tableName)
+    {
+        try {
+            $result = Yii::$app->db->createCommand("SHOW CREATE TABLE " . Yii::$app->db->quoteTableName($tableName))->queryOne();
+            if (isset($result['Create Table'])) {
+                return $result['Create Table'] . ';';
+            }
+        } catch (\Exception $e) {
+            Yii::error("Error getting CREATE TABLE SQL for $tableName: " . $e->getMessage(), 'backup');
+        }
+
+        return false;
     }
 
     /**
@@ -608,6 +861,19 @@ class BackupManager
             }
         }
 
+        if (isset($metadata['backup_components']['database']) && $metadata['backup_components']['database']) {
+            $dbRestored = false;
+
+            if (file_exists($tempDir . '/database/db_dump.sql')) {
+                $dbRestored = $this->restoreDatabase($tempDir . '/database/db_dump.sql');
+                if (!$dbRestored) {
+                    $errors[] = 'Failed to restore database';
+                }
+            } else {
+                $errors[] = 'Database backup not found in archive';
+            }
+        }
+
         FileHelper::removeDirectory($tempDir);
 
         if (empty($errors)) {
@@ -615,6 +881,63 @@ class BackupManager
         }
 
         return $errors;
+    }
+
+    private function restoreDatabase($sqlDumpPath)
+    {
+        $db = Yii::$app->db;
+
+        if ($db->driverName !== 'mysql') {
+            return false;
+        }
+
+        if (!file_exists($sqlDumpPath) || !is_file($sqlDumpPath)) {
+            Yii::error("SQL dump file does not exist: $sqlDumpPath", 'backup');
+            return false;
+        }
+
+        if (!is_readable($sqlDumpPath)) {
+            @chmod($sqlDumpPath, 0664);
+            if (!is_readable($sqlDumpPath)) {
+                Yii::error("SQL dump file is not readable: $sqlDumpPath", 'backup');
+                return false;
+            }
+        }
+
+        $dsn = $db->dsn;
+        preg_match('/host=([^;]*)/', $dsn, $hostMatches);
+        preg_match('/dbname=([^;]*)/', $dsn, $dbNameMatches);
+
+        if (empty($hostMatches[1]) || empty($dbNameMatches[1])) {
+            return false;
+        }
+
+        $host = $hostMatches[1];
+        $dbName = $dbNameMatches[1];
+        $user = $db->username;
+        $password = $db->password;
+
+        $command = 'which mysql 2>/dev/null';
+        $mysqlPath = exec($command, $output, $returnVar);
+
+        if ($returnVar !== 0 || empty($mysqlPath)) {
+            return false;
+        }
+
+        $command = "$mysqlPath ";
+
+        $command .= "-h " . escapeshellarg($host) . " ";
+        $command .= "-u " . escapeshellarg($user) . " ";
+
+        if (!empty($password)) {
+            $command .= "-p" . escapeshellarg($password) . " ";
+        }
+
+        $command .= escapeshellarg($dbName) . " < " . escapeshellarg($sqlDumpPath) . " 2>/dev/null";
+
+        exec($command, $output, $returnVar);
+
+        return ($returnVar === 0);
     }
 
     /**
