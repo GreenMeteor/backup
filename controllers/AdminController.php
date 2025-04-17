@@ -9,7 +9,6 @@ use humhub\modules\admin\permissions\ManageModules;
 use humhub\modules\backup\models\ConfigureForm;
 use humhub\modules\backup\components\BackupManager;
 use humhub\modules\backup\jobs\BackupJob;
-use humhub\modules\backup\notifications\BackupNotification;
 use yii\web\Response;
 
 /**
