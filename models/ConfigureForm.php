@@ -16,6 +16,11 @@ class ConfigureForm extends Model
     public $backupDir;
 
     /**
+     * @var bool backup database
+     */
+    public $backupDatabase = true;
+
+    /**
      * @var bool backup modules
      */
     public $backupModules = true;
@@ -63,7 +68,7 @@ class ConfigureForm extends Model
         return [
             [['backupDir'], 'string'],
             [['themeName'], 'string'],
-            [['backupModules', 'backupConfig', 'backupUploads', 'backupTheme', 'enableAutoBackup'], 'boolean'],
+            [['backupDatabase','backupModules', 'backupConfig', 'backupUploads', 'backupTheme', 'enableAutoBackup'], 'boolean'],
             [['autoBackupFrequency'], 'in', 'range' => ['daily', 'weekly', 'monthly']],
             [['keepBackups'], 'integer', 'min' => 1, 'max' => 100],
         ];
@@ -76,6 +81,7 @@ class ConfigureForm extends Model
     {
         return [
             'backupDir' => Yii::t('BackupModule.base', 'Backup Directory (absolute path or relative to HumHub root)'),
+            'backupDatabase' => Yii::t('BackupModule.base', 'Backup Database'),
             'backupModules' => Yii::t('BackupModule.base', 'Backup Modules'),
             'backupConfig' => Yii::t('BackupModule.base', 'Backup Config'),
             'backupUploads' => Yii::t('BackupModule.base', 'Backup Uploads'),
@@ -107,6 +113,7 @@ class ConfigureForm extends Model
     public function loadSettings()
     {
         $this->backupDir = Yii::$app->getModule('backup')->settings->get('backupDir', '@runtime/backups');
+        $this->backupDatabase = (boolean) Yii::$app->getModule('backup')->settings->get('backupDatabase', true);
         $this->backupModules = (boolean) Yii::$app->getModule('backup')->settings->get('backupModules', true);
         $this->backupConfig = (boolean) Yii::$app->getModule('backup')->settings->get('backupConfig', true);
         $this->backupUploads = (boolean) Yii::$app->getModule('backup')->settings->get('backupUploads', true);
@@ -125,6 +132,7 @@ class ConfigureForm extends Model
     public function save()
     {
         Yii::$app->getModule('backup')->settings->set('backupDir', $this->backupDir);
+        Yii::$app->getModule('backup')->settings->set('backupDatabase', $this->backupDatabase);
         Yii::$app->getModule('backup')->settings->set('backupModules', $this->backupModules);
         Yii::$app->getModule('backup')->settings->set('backupConfig', $this->backupConfig);
         Yii::$app->getModule('backup')->settings->set('backupUploads', $this->backupUploads);
