@@ -1,7 +1,7 @@
 <?php
 
 use yii\helpers\Url;
-use yii\helpers\Html;
+use humhub\libs\Html;
 use humhub\widgets\Button;
 use yii\widgets\ActiveForm;
 use humhub\modules\ui\view\components\View;
@@ -11,6 +11,13 @@ use humhub\modules\ui\view\components\View;
 /** @var $backups array */
 
 $this->title = Yii::t('BackupModule.base', 'Backup Management');
+
+$anyEnabled = (
+    $model->backupModules ||
+    $model->backupConfig ||
+    $model->backupUploads ||
+    $model->backupTheme
+);
 
 ?>
 
@@ -23,7 +30,7 @@ $this->title = Yii::t('BackupModule.base', 'Backup Management');
             
             <?= $form->field($model, 'backupDir')->textInput(['maxlength' => 255])->hint($model->getAttributeHint('backupDir')); ?>
 
-            <?= $form->field($model, 'backupDatabase')->checkbox(); ?>
+            <?= $form->field($model, 'backupDatabase')->checkbox(['disabled' => true]); ?>
 
             <?= $form->field($model, 'backupModules')->checkbox(); ?>
 
@@ -48,33 +55,33 @@ $this->title = Yii::t('BackupModule.base', 'Backup Management');
             <div class="form-group">
                 <?= Html::submitButton(Yii::t('base', 'Save'), ['class' => 'btn btn-primary', 'data-ui-loader' => '']); ?>
             </div>
-            
+
         <?php ActiveForm::end(); ?>
     </div>
 </div>
-
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <?= Yii::t('BackupModule.base', 'Backup Actions'); ?>
-    </div>
-    <div class="panel-body">
-        <div class="row">
-            <div class="col-md-6">
-                <?= Button::primary(Yii::t('BackupModule.base', 'Create Backup'))
-                    ->link(Url::to(['create-backup']))
-                    ->loader(true)
-                    ->options(['data-method' => 'POST']); ?>
-            </div>
-            <div class="col-md-6">
-                <?= Button::warning(Yii::t('BackupModule.base', 'Cleanup Old Backups'))
-                    ->link(Url::to(['cleanup-backups']))
-                    ->loader(true)
-                    ->options(['data-method' => 'POST']); ?>
+<?php if ($anyEnabled): ?>
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <?= Yii::t('BackupModule.base', 'Backup Actions'); ?>
+        </div>
+        <div class="panel-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <?= Button::primary(Yii::t('BackupModule.base', 'Create Backup'))
+                        ->link(Url::to(['create-backup']))
+                        ->loader(true)
+                        ->options(['data-method' => 'POST']); ?>
+                </div>
+                <div class="col-md-6">
+                    <?= Button::warning(Yii::t('BackupModule.base', 'Cleanup Old Backups'))
+                        ->link(Url::to(['cleanup-backups']))
+                        ->loader(true)
+                        ->options(['data-method' => 'POST']); ?>
+                </div>
             </div>
         </div>
     </div>
-</div>
-
+<?php endif; ?>
 <div class="panel panel-default">
     <div class="panel-heading">
         <?= Yii::t('BackupModule.base', 'Available Backups'); ?>
