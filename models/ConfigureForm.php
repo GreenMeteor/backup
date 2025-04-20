@@ -18,27 +18,27 @@ class ConfigureForm extends Model
     /**
      * @var bool backup database
      */
-    public $backupDatabase = true;
+    public $backupDatabase;
 
     /**
      * @var bool backup modules
      */
-    public $backupModules = true;
+    public $backupModules;
 
     /**
      * @var bool backup config
      */
-    public $backupConfig = true;
+    public $backupConfig;
 
     /**
      * @var bool backup uploads
      */
-    public $backupUploads = true;
+    public $backupUploads;
 
     /**
      * @var bool backup theme
      */
-    public $backupTheme = true;
+    public $backupTheme;
 
     /**
      * @var string theme name
@@ -114,11 +114,11 @@ class ConfigureForm extends Model
     public function loadSettings()
     {
         $this->backupDir = Yii::$app->getModule('backup')->settings->get('backupDir', '@runtime/backups');
-        $this->backupDatabase = (boolean) Yii::$app->getModule('backup')->settings->get('backupDatabase', true);
-        $this->backupModules = (boolean) Yii::$app->getModule('backup')->settings->get('backupModules', true);
-        $this->backupConfig = (boolean) Yii::$app->getModule('backup')->settings->get('backupConfig', true);
-        $this->backupUploads = (boolean) Yii::$app->getModule('backup')->settings->get('backupUploads', true);
-        $this->backupTheme = (boolean) Yii::$app->getModule('backup')->settings->get('backupTheme', true);
+        $this->backupDatabase = (boolean) Yii::$app->getModule('backup')->settings->get('backupDatabase');
+        $this->backupModules = (boolean) Yii::$app->getModule('backup')->settings->get('backupModules');
+        $this->backupConfig = (boolean) Yii::$app->getModule('backup')->settings->get('backupConfig');
+        $this->backupUploads = (boolean) Yii::$app->getModule('backup')->settings->get('backupUploads');
+        $this->backupTheme = (boolean) Yii::$app->getModule('backup')->settings->get('backupTheme');
         $this->themeName = Yii::$app->getModule('backup')->settings->get('themeName', '');
         $this->enableAutoBackup = (boolean) Yii::$app->getModule('backup')->settings->get('enableAutoBackup', false);
         $this->autoBackupFrequency = Yii::$app->getModule('backup')->settings->get('autoBackupFrequency', 'weekly');
