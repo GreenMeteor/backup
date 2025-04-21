@@ -97,7 +97,7 @@ $anyEnabled = (
                         <th><?= Yii::t('BackupModule.base', 'Filename'); ?></th>
                         <th><?= Yii::t('BackupModule.base', 'Size'); ?></th>
                         <th><?= Yii::t('BackupModule.base', 'Created At'); ?></th>
-                        <th><?= Yii::t('BackupModule.base', 'Actions'); ?></th>
+                        <th class="text-center"><?= Yii::t('BackupModule.base', 'Actions'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -106,15 +106,27 @@ $anyEnabled = (
                             <td><?= Html::encode($backup['filename']); ?></td>
                             <td><?= Html::encode($backup['size']); ?></td>
                             <td><?= Yii::$app->formatter->asDate($backup['created_at']); ?></td>
-                            <td>
-                                <?= Button::primary(Yii::t('BackupModule.base', 'Download'))
+                            <td class="text-nowrap">
+                                <?= Button::primary()
                                     ->link(Url::to(['download-backup', 'fileName' => $backup['filename']]))
                                     ->icon('cloud-download')
+                                    ->tooltip(Yii::t('BackupModule.base', 'Download'))
                                     ->xs(); ?>
 
-                                <?= Button::danger(Yii::t('BackupModule.base', 'Delete'))
+                                <?= Button::warning()
+                                    ->link(Url::to(['restore-backup', 'fileName' => $backup['filename']]))
+                                    ->icon('refresh')
+                                    ->tooltip(Yii::t('BackupModule.base', 'Restore'))
+                                    ->xs()
+                                    ->options([
+                                        'data-method' => 'POST',
+                                        'data-confirm' => Yii::t('BackupModule.base', 'Are you sure you want to restore this backup? This will overwrite existing data.'),
+                                    ]); ?>
+
+                                <?= Button::danger()
                                     ->link(Url::to(['delete-backup', 'fileName' => $backup['filename']]))
                                     ->icon('trash')
+                                    ->tooltip(Yii::t('BackupModule.base', 'Delete'))
                                     ->xs()
                                     ->options([
                                         'data-method' => 'POST',
