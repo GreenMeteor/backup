@@ -13,6 +13,7 @@ use humhub\modules\ui\view\components\View;
 $this->title = Yii::t('BackupModule.base', 'Backup Management');
 
 $anyEnabled = (
+    $model->backupDatabase ||
     $model->backupModules ||
     $model->backupConfig ||
     $model->backupUploads ||
@@ -30,7 +31,7 @@ $anyEnabled = (
             
             <?= $form->field($model, 'backupDir')->textInput(['maxlength' => 255])->hint($model->getAttributeHint('backupDir')); ?>
 
-            <?= $form->field($model, 'backupDatabase')->checkbox(['disabled' => true]); ?>
+            <?= $form->field($model, 'backupDatabase')->checkbox(); ?>
 
             <?= $form->field($model, 'backupModules')->checkbox(); ?>
 
