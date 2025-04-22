@@ -1105,6 +1105,219 @@ class BackupManager
     }
 
     /**
+     * Restore a backup (this is a complex operation that should be used carefully)
+     * 
+     * @param string $filename Filename of the backup to restore
+     * @return bool|array True on success, array of errors on failure
+     */
+    public function restoreBackup($filename)
+    {
+        if (!preg_match('/^humhub_backup_[a-zA-Z0-9_]+_\d{4}-\d{2}-\d{2}_\d{6}\.zip$/', $filename)) {
+            return ['Invalid backup filename'];
+        }
+
+        $backupDir = $this->getBackupDirectory();
+        $backupPath = $backupDir . DIRECTORY_SEPARATOR . $filename;
+        $errors = [];
+
+        if (!file_exists($backupPath) || !is_file($backupPath)) {
+            return ['Backup file not found'];
+        }
+
+        if (!is_readable($backupPath)) {
+            @chmod($backupPath, 0664);
+            if (!is_readable($backupPath)) {
+                return ['Backup file exists but is not readable (permission denied)'];
+            }
+        }
+
+        $rootDir = Yii::getAlias('@webroot');
+        $tempDir = Yii::getAlias('@runtime/backup_restore_' . time());
+
+        if (!FileHelper::createDirectory($tempDir, 0775, true)) {
+            return ['Could not create temporary directory for restoration'];
+        }
+
+        @chmod($tempDir, 0775);
+
+        $zip = new ZipArchive();
+        if ($zip->open($backupPath) !== true) {
+            FileHelper::removeDirectory($tempDir);
+            return ['Could not open backup archive'];
+        }
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $zip->extractTo($tempDir, [$zip->getNameIndex($i)]);
+
+            if ($i % 100 === 0) {
+                gc_collect_cycles();
+            }
+        }
+
+        $zip->close();
+
+        $metadata = [];
+        if (file_exists($tempDir . '/backup-info.json')) {
+            $metadata = json_decode(file_get_contents($tempDir . '/backup-info.json'), true);
+        }
+
+        if (isset($metadata['backup_components']['modules']) && $metadata['backup_components']['modules']) {
+            if (is_dir($tempDir . '/protected/modules')) {
+                try {
+                    $targetDir = $rootDir . '/protected/modules';
+                    if (!is_dir($targetDir)) {
+                        if (!FileHelper::createDirectory($targetDir, 0775, true)) {
+                            $errors[] = 'Could not create modules directory';
+                            Yii::error("Could not create modules directory: $targetDir", 'backup');
+                        } else {
+                            @chmod($targetDir, 0775);
+                        }
+                    } elseif (!is_writable($targetDir)) {
+                        @chmod($targetDir, 0775);
+                        if (!is_writable($targetDir)) {
+                            $errors[] = 'Modules directory is not writable';
+                            Yii::error("Modules directory is not writable: $targetDir", 'backup');
+                        }
+                    }
+
+                    if (empty($errors) || !in_array('Modules directory is not writable', $errors)) {
+                        FileHelper::copyDirectory($tempDir . '/protected/modules', $targetDir, [
+                            'dirMode' => 0775,
+                            'fileMode' => 0664
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = 'Failed to restore modules: ' . $e->getMessage();
+                    Yii::error("Failed to restore modules: " . $e->getMessage(), 'backup');
+                }
+            }
+        }
+
+        if (isset($metadata['backup_components']['config']) && $metadata['backup_components']['config']) {
+            if (is_dir($tempDir . '/protected/config')) {
+                try {
+                    $targetDir = $rootDir . '/protected/config';
+                    if (!is_dir($targetDir)) {
+                        if (!FileHelper::createDirectory($targetDir, 0775, true)) {
+                            $errors[] = 'Could not create config directory';
+                            Yii::error("Could not create config directory: $targetDir", 'backup');
+                        } else {
+                            @chmod($targetDir, 0775);
+                        }
+                    } elseif (!is_writable($targetDir)) {
+                        @chmod($targetDir, 0775);
+                        if (!is_writable($targetDir)) {
+                            $errors[] = 'Config directory is not writable';
+                            Yii::error("Config directory is not writable: $targetDir", 'backup');
+                        }
+                    }
+
+                    if (empty($errors) || !in_array('Config directory is not writable', $errors)) {
+                        FileHelper::copyDirectory($tempDir . '/protected/config', $targetDir, [
+                            'dirMode' => 0775,
+                            'fileMode' => 0664
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = 'Failed to restore config: ' . $e->getMessage();
+                    Yii::error("Failed to restore config: " . $e->getMessage(), 'backup');
+                }
+            }
+        }
+
+        if (isset($metadata['backup_components']['uploads']) && $metadata['backup_components']['uploads']) {
+            if (is_dir($tempDir . '/uploads')) {
+                try {
+                    $targetDir = $rootDir . '/uploads';
+                    if (!is_dir($targetDir)) {
+                        if (!FileHelper::createDirectory($targetDir, 0775, true)) {
+                            $errors[] = 'Could not create uploads directory';
+                            Yii::error("Could not create uploads directory: $targetDir", 'backup');
+                        } else {
+                            @chmod($targetDir, 0775);
+                        }
+                    } elseif (!is_writable($targetDir)) {
+                        @chmod($targetDir, 0775);
+                        if (!is_writable($targetDir)) {
+                            $errors[] = 'Uploads directory is not writable';
+                            Yii::error("Uploads directory is not writable: $targetDir", 'backup');
+                        }
+                    }
+
+                    if (empty($errors) || !in_array('Uploads directory is not writable', $errors)) {
+                        FileHelper::copyDirectory($tempDir . '/uploads', $targetDir, [
+                            'dirMode' => 0775,
+                            'fileMode' => 0664
+                        ]);
+
+                        $this->recursiveChmod($targetDir, 0775, 0664);
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = 'Failed to restore uploads: ' . $e->getMessage();
+                    Yii::error("Failed to restore uploads: " . $e->getMessage(), 'backup');
+                }
+            }
+        }
+
+        if (isset($metadata['backup_components']['theme']) && $metadata['backup_components']['theme'] && 
+            !empty($metadata['backup_components']['theme_name'])) {
+            $themeName = $metadata['backup_components']['theme_name'];
+            if (is_dir($tempDir . '/themes/' . $themeName)) {
+                try {
+                    $themeDir = $rootDir . '/themes';
+                    $targetDir = $themeDir . '/' . $themeName;
+
+                    if (!is_dir($themeDir)) {
+                        if (!FileHelper::createDirectory($themeDir, 0775, true)) {
+                            $errors[] = 'Could not create themes directory';
+                            Yii::error("Could not create themes directory: $themeDir", 'backup');
+                        } else {
+                            @chmod($themeDir, 0775);
+                        }
+                    } elseif (!is_writable($themeDir)) {
+                        @chmod($themeDir, 0775);
+                        if (!is_writable($themeDir)) {
+                            $errors[] = 'Themes directory is not writable';
+                            Yii::error("Themes directory is not writable: $themeDir", 'backup');
+                        }
+                    }
+
+                    if (empty($errors) || !in_array('Themes directory is not writable', $errors)) {
+                        FileHelper::copyDirectory($tempDir . '/themes/' . $themeName, $targetDir, [
+                            'dirMode' => 0775,
+                            'fileMode' => 0664
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = 'Failed to restore theme: ' . $e->getMessage();
+                    Yii::error("Failed to restore theme: " . $e->getMessage(), 'backup');
+                }
+            }
+        }
+
+        if (isset($metadata['backup_components']['database']) && $metadata['backup_components']['database']) {
+            $dbRestored = false;
+
+            if (file_exists($tempDir . '/database/db_dump.sql')) {
+                $dbRestored = $this->restoreDatabase($tempDir . '/database/db_dump.sql');
+                if (!$dbRestored) {
+                    $errors[] = 'Failed to restore database';
+                }
+            } else {
+                $errors[] = 'Database backup not found in archive';
+            }
+        }
+
+        FileHelper::removeDirectory($tempDir);
+
+        if (empty($errors)) {
+            return true;
+        }
+
+        return $errors;
+    }
+
+    /**
      * Set permissions recursively on a directory
      *
      * @param string $path Path to set permissions on
