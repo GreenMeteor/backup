@@ -1,6 +1,6 @@
 <?php
 
-namespace humhub\modules\backup\components;
+namespace humhub\modules\backup\factories;
 
 use humhub\modules\backup\components\FullBackup;
 use humhub\modules\backup\components\FilesBackup;
