@@ -8,11 +8,12 @@ use humhub\modules\admin\components\Controller;
 use humhub\modules\admin\permissions\ManageModules;
 use humhub\modules\backup\models\ConfigureForm;
 use humhub\modules\backup\components\BackupManager;
+use humhub\modules\backup\factories\BackupFactory;
 use humhub\modules\backup\jobs\BackupJob;
-use yii\web\Response;
 
 /**
  * Admin controller for the backup module
+ * Uses BackupManager and BackupFactory to handle backup operations
  */
 class AdminController extends Controller
 {
@@ -27,7 +28,7 @@ class AdminController extends Controller
     }
 
     /**
-     * Renders the settings form
+     * Renders the settings form with backups
      */
     public function actionIndex()
     {
@@ -35,19 +36,15 @@ class AdminController extends Controller
         $model->loadSettings();
 
         $backupManager = new BackupManager();
-        $backups = $backupManager->getBackupsList();
+        $backups = $backupManager->getBackups();
 
-        foreach ($backups as &$backup) {
-            if (!isset($backup['created_at'])) {
-                $backupFilePath = $backupManager->getBackupDirectory() . '/' . $backup['filename'];
-                if (file_exists($backupFilePath)) {
-                    $backup['created_at'] = filemtime($backupFilePath);
-                } else {
-                    $backup['created_at'] = null;
-                }
-            }
-        }
-        unset($backup);
+        $backupTypes = [
+            'full' => Yii::t('BackupModule.base', 'Full Backup'),
+            'database' => Yii::t('BackupModule.base', 'Database Backup'),
+            'files' => Yii::t('BackupModule.base', 'Files Backup'),
+            'config' => Yii::t('BackupModule.base', 'Configuration Backup'),
+            'modules' => Yii::t('BackupModule.base', 'Modules Backup'),
+        ];
 
         if ($model->load(Yii::$app->request->post()) && $model->validate()) {
             $model->save();
@@ -56,19 +53,32 @@ class AdminController extends Controller
 
         return $this->render('index', [
             'model' => $model,
-            'backups' => $backups
+            'backups' => $backups,
+            'backupTypes' => $backupTypes
         ]);
     }
 
     /**
-     * Creates a new backup using the background job
+     * Queue a backup job
+     * 
+     * @param string $type Backup type (database, files, config, modules, full)
+     * @return \yii\web\Response
      */
-    public function actionCreateBackup()
+    public function actionCreateBackup($type = null)
     {
         $this->forcePostRequest();
 
         try {
-            $job = new BackupJob([]);
+            if ($type !== null) {
+                try {
+                    BackupFactory::create($type);
+                } catch (\InvalidArgumentException $e) {
+                    $this->view->error(Yii::t('BackupModule.base', 'Invalid backup type: {type}', ['type' => $type]));
+                    return $this->redirect(['index']);
+                }
+            }
+
+            $job = new BackupJob(['type' => $type]);
 
             if (Yii::$app->queue->push($job)) {
                 $this->view->info(Yii::t('BackupModule.base', 'Backup job has been queued and will run in the background.'));
@@ -86,36 +96,39 @@ class AdminController extends Controller
     /**
      * Download a backup
      * 
-     * @param string $fileName The filename to download
+     * @param string $backupName Backup name (directory name)
      * @return \yii\web\Response
-     * @throws HttpException If file doesn't exist
-     */  
-    public function actionDownloadBackup($fileName)
+     */
+    public function actionDownloadBackup($backupName)
     {
-        $backupManager = new BackupManager();
-        $filePath = $backupManager->prepareDownload($fileName);
+        $backupDir = Yii::getAlias('@runtime/backup/' . $backupName);
 
-        if ($filePath === false) {
-            throw new HttpException(404, Yii::t('BackupModule.base', 'Backup file not found or invalid.'));
+        if (!is_dir($backupDir)) {
+            throw new HttpException(404, Yii::t('BackupModule.base', 'Backup not found.'));
         }
 
-        return Yii::$app->response->sendFile($filePath, $fileName);
+        $zipPath = $backupDir . '/backup.zip';
+
+        if (file_exists($zipPath)) {
+            return Yii::$app->response->sendFile($zipPath, $backupName . '.zip');
+        }
+
+        throw new HttpException(404, Yii::t('BackupModule.base', 'Backup file not found.'));
     }
 
     /**
      * Delete a backup
      * 
-     * @param string $fileName The filename to delete
+     * @param string $backupName Backup name (directory name)
      * @return \yii\web\Response
-     * @throws HttpException If file doesn't exist
      */
-    public function actionDeleteBackup($fileName)
+    public function actionDeleteBackup($backupName)
     {
         $this->forcePostRequest();
 
         $backupManager = new BackupManager();
 
-        if ($backupManager->deleteBackup($fileName)) {
+        if ($backupManager->deleteBackup($backupName)) {
             $this->view->success(Yii::t('BackupModule.base', 'Backup deleted successfully.'));
         } else {
             $this->view->error(Yii::t('BackupModule.base', 'Failed to delete backup.'));
@@ -125,20 +138,29 @@ class AdminController extends Controller
     }
 
     /**
-     * Run auto-cleanup of old backups
+     * Create a backup manually
+     * 
+     * @param string $type Backup type (database, files, config, modules, full)
+     * @return \yii\web\Response
      */
-    public function actionCleanupBackups()
+    public function actionCreateManualBackup($type = null)
     {
         $this->forcePostRequest();
 
-        $backupManager = new BackupManager();
-
         try {
-            $deleted = $backupManager->cleanupOldBackups();
-            $this->view->success(Yii::t('BackupModule.base', 'Deleted {count} old backup(s).', ['count' => $deleted]));
+            $backupManager = new BackupManager();
+            
+            if ($backupManager->createBackup($type)) {
+                $this->view->success(Yii::t('BackupModule.base', 'Backup created successfully.'));
+            } else {
+                $this->view->error(Yii::t('BackupModule.base', 'Failed to create backup.'));
+            }
+        } catch (\InvalidArgumentException $e) {
+            $this->view->error(Yii::t('BackupModule.base', 'Invalid backup type: {message}', ['message' => $e->getMessage()]));
+            Yii::error('Invalid backup type: ' . $e->getMessage(), 'backup');
         } catch (\Exception $e) {
-            $this->view->error(Yii::t('BackupModule.base', 'Error cleaning up backups: {message}', ['message' => $e->getMessage()]));
-            Yii::error('Error cleaning up backups: ' . $e->getMessage(), 'backup');
+            $this->view->error(Yii::t('BackupModule.base', 'Error creating backup: {message}', ['message' => $e->getMessage()]));
+            Yii::error('Error creating backup: ' . $e->getMessage(), 'backup');
         }
 
         return $this->redirect(['index']);
@@ -147,26 +169,31 @@ class AdminController extends Controller
     /**
      * Restore a backup
      * 
-     * @param string $fileName The filename to restore
+     * @param string $backupName Backup name (directory name)
      * @return \yii\web\Response
-     * @throws HttpException If file doesn't exist or restoration fails
      */
-    public function actionRestoreBackup($fileName)
+    public function actionRestoreBackup($backupName)
     {
         $this->forcePostRequest();
 
-        $backupManager = new BackupManager();
+        $backupDir = Yii::getAlias('@runtime/backup/' . $backupName);
 
-        $result = $backupManager->restoreBackup($fileName);
-
-        if ($result === true) {
-            $this->view->success(Yii::t('BackupModule.base', 'Backup restored successfully.'));
-        } else {
-            $errorMessage = is_array($result) ? implode(', ', $result) : Yii::t('BackupModule.base', 'Failed to restore backup.');
-            $this->view->error($errorMessage);
-            Yii::error('Error restoring backup: ' . $errorMessage, 'backup');
+        if (!is_dir($backupDir)) {
+            throw new HttpException(404, Yii::t('BackupModule.base', 'Backup not found.'));
         }
 
-        return $this->redirect(['index']);
+        $metaFile = $backupDir . '/meta.json';
+        if (file_exists($metaFile)) {
+            $meta = json_decode(file_get_contents($metaFile), true);
+            $type = $meta['type'] ?? 'full';
+
+            $this->view->info(Yii::t('BackupModule.base', 'Restore operation would be performed for {type} backup.', [
+                'type' => $type
+            ]));
+
+            return $this->redirect(['index']);
+        }
+
+        throw new HttpException(400, Yii::t('BackupModule.base', 'Invalid backup structure.'));
     }
 }
