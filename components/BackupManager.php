@@ -5,6 +5,7 @@ namespace humhub\modules\backup\components;
 use Yii;
 use yii\base\Component;
 use yii\helpers\FileHelper;
+use humhub\modules\backup\factories\BackupFactory;
 
 /**
  * Backup Manager Class
