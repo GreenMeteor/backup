@@ -14,7 +14,7 @@ interface BackupInterface
      * @return boolean success state
      */
     public function execute();
-    
+
     /**
      * Get the backup directory
      * 
