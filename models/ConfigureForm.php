@@ -1,4 +1,3 @@
-
 <?php
 
 namespace humhub\modules\backup\models;
