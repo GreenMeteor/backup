@@ -7,7 +7,7 @@ name: Upload to HumHub Marketplace
 
 jobs:
   build:
-    uses: GreenMeteor/actions/.github/workflows/module-marketplace-upload.yml@main
+    uses: greenmeteor/actions/.github/workflows/module-marketplace-upload.yml@main
     with:
       install-composer: true
       install-npm: true
