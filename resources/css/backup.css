@@ -1,0 +1,151 @@
+/* Functional improvements without excessive visual enhancements */
+.backup-admin-container {
+    padding: 10px 0;
+}
+
+/* Panel styling - maintaining the Bootstrap panel look */
+.panel {
+    margin-bottom: 20px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+.panel-heading {
+    padding: 10px 15px;
+    border-bottom: 1px solid #ddd;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    background-color: #f5f5f5;
+    color: #333;
+    font-weight: bold;
+}
+
+.panel-body {
+    padding: 15px;
+}
+
+/* Form styling - subtle improvements */
+.form-control {
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    font-weight: normal;
+}
+
+.hint-block {
+    color: #777;
+    font-size: 0.9em;
+    margin-top: 2px;
+}
+
+/* Component section styling */
+.backup-component-section {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+.backup-component-section .form-group {
+    margin-bottom: 5px;
+}
+
+/* Button adjustments - keeping them recognizable */
+.btn {
+    border-radius: 4px;
+}
+
+.btn-primary {
+    background-color: #337ab7;
+    border-color: #2e6da4;
+}
+
+.btn-warning {
+    background-color: #f0ad4e;
+    border-color: #eea236;
+}
+
+.btn-danger {
+    background-color: #d9534f;
+    border-color: #d43f3a;
+}
+
+/* Table styling - minimal adjustments */
+.table {
+    margin-bottom: 0;
+}
+
+.table > thead > tr > th {
+    border-bottom: 2px solid #ddd;
+    font-weight: bold;
+}
+
+.table > tbody > tr > td {
+    vertical-align: middle;
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .btn-xs {
+        padding: 3px 8px;
+    }
+    
+    .text-nowrap {
+        white-space: normal;
+    }
+    
+    .btn-group {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+    }
+    
+    .btn-group .btn {
+        flex: 1;
+        margin: 0 2px;
+    }
+}
+
+/* Backup item styling */
+.backup-item {
+    padding: 5px 0;
+}
+
+.backup-filename {
+    font-weight: bold;
+}
+
+.backup-size {
+    color: #777;
+}
+
+/* Empty state styling */
+.empty-state {
+    padding: 15px;
+    text-align: center;
+    color: #777;
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+/* Fix for button alignment in action area */
+.backup-actions {
+    padding: 10px 0;
+}
+
+/* Add margin between buttons on mobile */
+@media (max-width: 767px) {
+    .col-md-6 {
+        margin-bottom: 10px;
+    }
+}
